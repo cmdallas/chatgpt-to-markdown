@@ -1,19 +1,17 @@
 // ==UserScript==
 // @name        ChatGPT to Markdown
 // @author      self@chrisdallas.tech
-// @version     1.0
+// @version     1.1
 // @description Export ChatGPT conversations to markdown.
 // @grant       none
 // @match       *://chat.openai.com/*
 // ==/UserScript==
 
-function conversationToMarkdown(conversation) {
-  let markdown = '';
-  conversation.forEach((item) => {
-    markdown += '**' + item.author + '**: ' + item.text + '\n';
-  });
-
-  return markdown;
+function getConversation() {
+  let conversationItemNodes = document.querySelectorAll('*[class^="text-base"]');
+  let conversation = searchConversationItemNodes(conversationItemNodes);
+  let formattedConversation = conversationToMarkdown(conversation)
+  return formattedConversation
 }
 
 function searchConversationItemNodes(nodes) {
@@ -29,6 +27,15 @@ function searchConversationItemNodes(nodes) {
   }
 
   return results;
+}
+
+function conversationToMarkdown(conversation) {
+  let markdown = '';
+  conversation.forEach((item) => {
+    markdown += '**' + item.author + '**: ' + item.text + '\n';
+  });
+
+  return markdown;
 }
 
 function getAuthor(node) {
@@ -50,37 +57,35 @@ function getAuthor(node) {
 }
 
 document.addEventListener('copy-chatgpt-text', function() {
-  let conversationItemNodes = document.querySelectorAll('*[class^="ConversationItem__Message"]');
-  console.log("Conversation", conversationItemNodes);
-  let conversation = searchConversationItemNodes(conversationItemNodes);
-  let formattedConversation = conversationToMarkdown(conversation)
-  navigator.clipboard.writeText(formattedConversation);
-  console.log("ChatGPT Conversation copied")
+  let conversation = getConversation()
+  if (conversation !== '' ) {
+    navigator.clipboard.writeText(conversation);
+    console.log("ChatGPT Conversation copied")
+  }
 }, false);
 
-let button = document.createElement('button');
-button.innerText = 'Copy ChatGPT Conversation';
+let copyButton = document.createElement('button');
+copyButton.innerText = 'Copy to clipboard';
 
-button.style.position = 'fixed';
-button.style.border = "none";
-button.style.borderRadius = "5px";
-button.style.bottom = '0';
-button.style.right = '0';
-button.style.zIndex = '9999';
+copyButton.style.position = 'fixed';
+copyButton.style.borderRadius = "5px";
+copyButton.style.bottom = '0';
+copyButton.style.right = '0';
+copyButton.style.zIndex = '9999';
 
-button.addEventListener("mouseenter", function() {
-  button.style.backgroundColor = "#444654";
-  button.style.opacity = 1
+copyButton.addEventListener("mouseenter", function() {
+  copyButton.style.backgroundColor = "#444654";
+  copyButton.style.opacity = 1
 });
 
-button.addEventListener("mouseleave", function() {
-  button.style.backgroundColor = "";
-  button.style.fontSize = "";
+copyButton.addEventListener("mouseleave", function() {
+  copyButton.style.backgroundColor = "";
+  copyButton.style.fontSize = "";
 });
 
-button.addEventListener("click", function() {
+copyButton.addEventListener("click", function() {
   let copyChatGPTEvent = new Event("copy-chatgpt-text");
   document.dispatchEvent(copyChatGPTEvent);
 })
 
-document.body.appendChild(button);
+document.body.appendChild(copyButton);
