@@ -34,6 +34,23 @@ function htmlToMarkdown(element) {
           var language = getLanguage(node);
           markdown += "\n\n```" + (language ? language : "") + "\n" + node.textContent + "\n```\n\n";
         }
+      } else if (node.nodeName === "LI") {
+        if (node.parentNode.nodeName === "UL") {
+          markdown += "* " + htmlToMarkdown(node) + "\n";
+        } else if (node.parentNode.nodeName === "OL") {
+          let index = Array.prototype.indexOf.call(node.parentNode.childNodes, node) + 1;
+          markdown += "" + index + ". " + htmlToMarkdown(node) + "\n";
+        } else {
+          markdown += "* " + htmlToMarkdown(node) + "\n";
+        }
+      } else if (node.nodeName === "UL" || node.nodeName === "OL") {
+        markdown += "\n" + htmlToMarkdown(node);
+      } else if (node.nodeName === "P") {
+        // if the preceding node is a P, add a newline
+        if (i > 0 && element.childNodes[i - 1].nodeName === "P") {
+          markdown += "\n";
+        }
+        markdown += htmlToMarkdown(node) + "\n";
       } else if (node.nodeName !== "BUTTON") {
         markdown += htmlToMarkdown(node);
       }
