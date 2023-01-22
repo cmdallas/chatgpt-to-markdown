@@ -5,13 +5,25 @@
 // @description Export ChatGPT conversations to markdown.
 // @grant       none
 // @match       *://chat.openai.com/*
+// @require  https://raw.githubusercontent.com/eligrey/FileSaver.js/cea522bc41bfadc364837293d0c4dc585a65ac46/dist/FileSaver.js
 // ==/UserScript==
 
-function getConversation() {
+async function getConversation() {
   let conversationItemNodes = document.querySelectorAll('*[class^="text-base"]');
   let conversation = searchConversationItemNodes(conversationItemNodes);
   let formattedConversation = conversationToMarkdown(conversation)
-  return formattedConversation
+  const chatData = await fetchChatMetadata(extractChatId())
+  const epoch = chatData.create_time
+  // trim whitespace from chatData.title 
+  const title = chatData.title.trim()
+  const date = new Date(epoch * 1000)
+  const formattedDate = date.toISOString().split('T')[0]
+  const markdownTitle = `# ${title} (${formattedDate})`
+  return {
+    markdown: markdownTitle + "\n\n" + formattedConversation,
+    chatData: chatData,
+    title, date, formattedDate
+  }
 }
 
 function getLanguage(element) {
@@ -55,7 +67,7 @@ function htmlToMarkdown(element) {
         markdown += htmlToMarkdown(node);
       }
     } else if (node.nodeType === Node.TEXT_NODE) {
-        markdown += node.textContent;
+      markdown += node.textContent;
     }
   }
   return markdown;
@@ -68,7 +80,7 @@ function searchConversationItemNodes(nodes) {
     let nodeInnerText = htmlToMarkdown(node)
     if (nodeInnerText.length > 0) {
       let author = getAuthor(node);
-      let conversationItem = {"author": author, "text": nodeInnerText, "_node": node}
+      let conversationItem = { "author": author, "text": nodeInnerText, "_node": node }
       results.push(conversationItem);
     }
   }
@@ -103,36 +115,127 @@ function getAuthor(node) {
   return getImgAltAttribute(outerHTML)
 }
 
-document.addEventListener('copy-chatgpt-text', function() {
-  let conversation = getConversation()
-  if (conversation !== '' ) {
-    navigator.clipboard.writeText(conversation);
-    console.log("ChatGPT Conversation copied")
+function getMessages() {
+  const threadMap = window.__NEXT_DATA__.props.pageProps.initialData.thread ?? {}
+  window.threadMap = threadMap
+  // iterate over threadMap and sort messages by create_time
+  const messages = Object.values(threadMap)
+    .filter((x) => x.message.create_time ?? undefined !== undefined)
+    .map((x) => x.message)
+    .sort((a, b) => a.create_time - b.create_time)
+  return messages
+}
+
+function getFirstMessageTimestamp() {
+  const messages = getMessages()
+  if (messages.length === 0) {
+    return null
   }
-}, false);
+  const epoch = messages[0].create_time
+  // convert epoch to date
+  const date = new Date(epoch * 1000)
+  return date
+}
 
-let copyButton = document.createElement('button');
-copyButton.innerText = 'Copy to clipboard';
+function extractChatId() {
+  // extract chat ID out of current path looking like /chat/chatId
+  const path = window.location.pathname
+  const chatId = path.split("/")[2]
+  return chatId
+}
 
-copyButton.style.position = 'fixed';
-copyButton.style.borderRadius = "5px";
-copyButton.style.bottom = '0';
-copyButton.style.right = '0';
-copyButton.style.zIndex = '9999';
+async function fetchChatMetadata(id) {
+  const url = "https://chat.openai.com/backend-api/conversation/" + id;
 
-copyButton.addEventListener("mouseenter", function() {
-  copyButton.style.backgroundColor = "#444654";
-  copyButton.style.opacity = 1
+  // fetch chat metadata and parse body as json
+  const response = await fetch(url, {
+    "cache": "default",
+    "credentials": "include",
+    "headers": {
+      "Accept": "*/*",
+      "Accept-Language": "en-US,en;q=0.9",
+      "Authorization": "Bearer " + window.__NEXT_DATA__.props.pageProps.accessToken,
+      "Content-Type": "application/json",
+      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15"
+    },
+    "method": "GET",
+    "mode": "cors",
+    "redirect": "follow",
+    "referrer": window.location.url,
+    "referrerPolicy": "strict-origin-when-cross-origin"
+  })
+  const ret = await response.json();
+  return ret
+}
+
+const buttonDiv = document.createElement("div");
+buttonDiv.style.position = 'fixed';
+buttonDiv.style.bottom = '10px';
+buttonDiv.style.right = '10px';
+buttonDiv.style.zIndex = '9999';
+document.body.appendChild(buttonDiv);
+
+function makeButton(text, eventname, callback) {
+  document.addEventListener(eventname, callback, false)
+  const button = document.createElement("button")
+  button.innerText = text
+  button.style.marginLeft = "5px";
+  button.style.marginRight = "5px";
+  button.style.borderRadius = "5px";
+
+  button.addEventListener("mouseenter", function () {
+    button.style.backgroundColor = "#444654";
+    button.style.opacity = 1
+  });
+
+  button.addEventListener("mouseleave", function () {
+    button.style.backgroundColor = "";
+    button.style.fontSize = "";
+  });
+
+  button.addEventListener("click", function () {
+    document.dispatchEvent(new Event(eventname));
+  })
+
+  buttonDiv.appendChild(button)
+}
+
+makeButton("Copy to clipboard", "copy-chatgpt-text", function () {
+  // we have to do this insanity because copy pasting to the clipboard is not 
+  // doable in safari.
+  //
+  // See: https://developer.apple.com/forums/thread/691873
+  const clipboardItem = new ClipboardItem({
+    'text/plain': getConversation().then(({ markdown }) => {
+
+      /**
+       * We have to return an empty string to the clipboard if something bad happens, otherwise the
+       * return type for the ClipBoardItem is incorrect.
+       */
+      if (!markdown) {
+        return new Promise(async (resolve) => {
+          resolve(new Blob[``]())
+        })
+      }
+
+      return new Promise(async (resolve) => {
+        console.log("Saving chatgpt markdown to clipboard")
+        resolve(new Blob([markdown]))
+      })
+    }),
+  })
+  // Now, we can write to the clipboard in Safari
+  navigator.clipboard.write([clipboardItem])
 });
 
-copyButton.addEventListener("mouseleave", function() {
-  copyButton.style.backgroundColor = "";
-  copyButton.style.fontSize = "";
+makeButton("Download markdown", "download-chatgpt-text", async function () {
+  const { markdown, title, formattedDate } = await getConversation()
+  if (!markdown) {
+    return
+  }
+
+  var blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+  // format date
+  const filename = formattedDate + " - " + title + ".md"
+  saveAs(blob, filename)
 });
-
-copyButton.addEventListener("click", function() {
-  let copyChatGPTEvent = new Event("copy-chatgpt-text");
-  document.dispatchEvent(copyChatGPTEvent);
-})
-
-document.body.appendChild(copyButton);
