@@ -14,11 +14,41 @@ function getConversation() {
   return formattedConversation
 }
 
+function getLanguage(element) {
+  var language = element.classList.value.split(" ").find(classname => classname.startsWith("language-"));
+  if (language) {
+    return language.substring("language-".length);
+  }
+  return null;
+}
+
+function htmlToMarkdown(element) {
+  var markdown = "";
+  for (var i = 0; i < element.childNodes.length; i++) {
+    var node = element.childNodes[i];
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      if (node.nodeName === "CODE") {
+        if (node.parentNode.nodeName === "P") {
+          markdown += "`" + node.textContent + "`";
+        } else {
+          var language = getLanguage(node);
+          markdown += "\n\n```" + (language ? language : "") + "\n" + node.textContent + "\n```\n\n";
+        }
+      } else if (node.nodeName !== "BUTTON") {
+        markdown += htmlToMarkdown(node);
+      }
+    } else if (node.nodeType === Node.TEXT_NODE) {
+        markdown += node.textContent;
+    }
+  }
+  return markdown;
+}
+
 function searchConversationItemNodes(nodes) {
   let results = [];
 
   for (let node of nodes) {
-    let nodeInnerText = node.innerText
+    let nodeInnerText = htmlToMarkdown(node)
     if (nodeInnerText.length > 0) {
       let author = getAuthor(node);
       let conversationItem = {"author": author, "text": nodeInnerText, "_node": node}
@@ -32,7 +62,7 @@ function searchConversationItemNodes(nodes) {
 function conversationToMarkdown(conversation) {
   let markdown = '';
   conversation.forEach((item) => {
-    markdown += '**' + item.author + '**: ' + item.text + '\n';
+    markdown += '\n**' + item.author + '**: ' + item.text + '\n';
   });
 
   return markdown;
